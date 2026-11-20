@@ -1,0 +1,121 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Made by Us tests</title>
+<pre id="out"></pre>
+<script src="core.js"></script>
+<script src="variants.js"></script>
+<script>
+(function () {
+  const M = window.MBU, V = M.VARIANTS;
+  const lines = [];
+  let fails = 0;
+  function eq(name, got, want) {
+    const ok = JSON.stringify(got) === JSON.stringify(want);
+    if (!ok) fails++;
+    lines.push((ok ? 'PASS ' : 'FAIL ') + name + (ok ? '' : `  got=${JSON.stringify(got)} want=${JSON.stringify(want)}`));
+  }
+  const grade = (vid, code) => M.GRADES[V[vid].score(V[vid].decode(code)).gradeIndex];
+
+  // Scenario grades, per variant. These are the numbers the group compares.
+  const expected = {
+    'Own engine, everything handmade':                          ['A+', 'A+', 'A+'],
+    'TiXL by its own authors, everything handmade':             ['A+', 'A+', 'A+'],
+    'Own engine, one stock font':                               ['A', 'A', 'A'],
+    'Own engine, AI-generated soundtrack':                      ['D', 'D', 'E'],
+    'Own engine, shaders mostly AI-generated then reworked':    ['D', 'D', 'D'],
+    'Own framework mostly AI-generated, content handmade':      ['B', 'B', 'B'],
+    'TiXL / Unity, everything else handmade':                   ['B', 'B', 'B'],
+    'TiXL + stock textures + sample-pack drums (reworked)':     ['B', 'C', 'C'],
+    'Unity + asset-store 3D + AI soundtrack':                   ['F', 'F', 'E'],
+    'Everything generated':                                     ['F', 'F', 'F'],
+  };
+  for (const s of M.SCENARIOS) {
+    for (const vid of M.VARIANT_ORDER) eq(`scenario decodes: ${vid} ${s.name}`, !!V[vid].decode(s[vid]), true);
+    eq('scenario grades: ' + s.name, M.VARIANT_ORDER.map(vid => grade(vid, s[vid])), expected[s.name]);
+  }
+
+  // Records
+  const rec = { variant: 's1', answers: '1100030', prod: 'pz94176' };
+  eq('record round trip', M.decodeRecord('#' + M.encodeRecord(rec), V), rec);
+  eq('short code', M.shortCode(rec), 'MBU-s1-1100030-pz94176');
+  eq('short code decodes', M.decodeRecord(M.shortCode(rec), V), rec);
+  eq('hidden slots survive short code', M.decodeRecord('MBU-d1-0_0_110_0_0_', V), { variant: 'd1', answers: '0_0_110_0_0_', prod: null });
+  eq('full url', M.decodeRecord('https://x.example/#q1/0_12', V), { variant: 'q1', answers: '0_12', prod: null });
+
+  // Rejections
+  eq('unknown variant', M.decodeRecord('x1/000', V), null);
+  eq('too short', V.s1.decode('0_0000'), null);
+  eq('option out of range', V.q1.decode('0_30'), null);
+  eq('framework out of range', V.q1.decode('a_00'), null);
+  eq('authors follow-up hidden for own code', V.q1.decode('0000'), null);
+  eq('authors follow-up required for listed tool', V.q1.decode('1_00'), null);
+  eq('no authors follow-up for other engine', V.q1.decode('8000'), null);
+  eq('hidden must be _', V.d1.decode('0_000_0_0_0_'), null);
+  eq('visible must not be _', V.d1.decode('0_1_0_0_0_0_'), null);
+  eq('bad production', M.decodeRecord('q1/0_00/xx1', V), null);
+
+  // Completeness
+  eq('incomplete quick', V.q1.isComplete([0, null, null, 0]), false);
+  eq('authors follow-up needed for listed tool', V.q1.isComplete([1, null, 0, 0]), false);
+  eq('detailed: rework only needed when asked', V.d1.isComplete([0, null, 0, null, 0, null, 0, null, 0, null, 0, null]), true);
+  eq('detailed: rework needed when asked', V.d1.isComplete([0, null, 1, null, 0, null, 0, null, 0, null, 0, null]), false);
+
+  // Group rules, every variant
+  const allOk = { q1: '0_00', s1: '0_00000', d1: '0_0_0_0_0_0_' };
+  for (const vid of M.VARIANT_ORDER) {
+    const rest = allOk[vid].slice(2);
+    eq(`${vid}: all ours -> A+`, grade(vid, allOk[vid]), 'A+');
+    eq(`${vid}: third-party tool -> B`, grade(vid, '51' + rest), 'B');
+    eq(`${vid}: other third-party engine -> B`, grade(vid, '8_' + rest), 'B');
+    eq(`${vid}: mostly AI-generated framework -> B`, grade(vid, '9_' + rest), 'B');
+    eq(`${vid}: listed tool, we are its authors -> A+`, grade(vid, '10' + rest), 'A+');
+  }
+  eq('built with own engine', M.builtWith(V.s1.decode('0_00000')), 'Built with our own engine');
+  eq('built with TiXL', M.builtWith(V.s1.decode('1100000')), 'Built with TiXL');
+  eq('built with our own TiXL', M.builtWith(V.s1.decode('1000000')), 'Built with TiXL \u2014 our own tool');
+  eq('built with other', M.builtWith(V.s1.decode('8_00000')), 'Built with a third-party engine');
+  eq('s1: any category mostly not ours -> D at best', ['30000', '03000', '00300', '00030', '00003'].map(c => grade('s1', '0_' + c)).every(g => M.GRADES.indexOf(g) >= 4), true);
+  eq('d1: any category mostly not ours -> D at best', [2, 4, 6, 8, 10].every(i => {
+    const vals = V.d1.decode('0_0_0_0_0_0_'); vals[i] = 3; vals[i + 1] = 0;
+    return V.d1.score(vals).gradeIndex >= 4;
+  }), true);
+
+  // Monotonic: making any single answer worse (higher option) never improves the grade.
+  for (const vid of M.VARIANT_ORDER) {
+    const v = V[vid], qs = v.questions;
+    let checked = 0, bad = null;
+    const vals = new Array(qs.length).fill(null);
+    (function walk(i) {
+      if (bad) return;
+      if (i === qs.length) {
+        const g = v.score(vals).gradeIndex;
+        for (let k = 0; k < qs.length && !bad; k++) {
+          if (vals[k] === null || vals[k] + 1 >= qs[k].options.length) continue;
+          const worse = vals.slice();
+          worse[k]++;
+          // A newly asked follow-up starts at its best answer.
+          for (let j = k + 1; j < qs.length; j++) {
+            if (v.visible(worse, j) && worse[j] === null) worse[j] = 0;
+            if (!v.visible(worse, j)) worse[j] = null;
+          }
+          checked++;
+          if (v.score(worse).gradeIndex < g) bad = v.encode(vals) + ' -> ' + v.encode(worse);
+        }
+        return;
+      }
+      if (!v.visible(vals, i)) { vals[i] = null; walk(i + 1); return; }
+      for (let o = 0; o < qs[i].options.length; o++) { vals[i] = o; walk(i + 1); }
+      vals[i] = null;
+    })(0);
+    eq(`${vid}: monotonic (${checked} neighbours)`, bad, null);
+  }
+
+  // Label
+  const svg = M.labelSvg({ gradeIndex: 2, headline: 'Built with TiXL', detail: 'E1 V0 M0 A0 D0' }, { count: 2, isDark: (r, c) => r === c });
+  eq('label svg', svg.startsWith('<svg') && svg.includes('M0 0h1v1h-1z') && svg.includes('Built with TiXL'), true);
+  eq('label escapes text', M.labelSvg({ gradeIndex: 0, headline: '<x>', detail: 'a&b' }, null).includes('&lt;x>'), true);
+
+  lines.push(fails ? `${fails} FAILED` : 'ALL PASSED');
+  document.getElementById('out').textContent = lines.join('\n');
+})();
+</script>

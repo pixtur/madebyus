@@ -74,5 +74,5 @@ keep decoding and rendering with their own scoring.
 - `test.html` — tests
 
 QR codes use `qrcode-generator` from cdnjs; without it the label renders without a QR code.
-On `file://` the QR code points to the placeholder `https://madebyus.example/` — set `PUBLIC_BASE` in
-`app.js` once there is a real host.
+Live at https://pixtur.github.io/madebyus/ (GitHub Pages, `main` branch, root). Labels made from a local
+`file://` copy still point their QR code there (`PUBLIC_BASE` in `app.js`).

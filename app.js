@@ -6,7 +6,7 @@
   const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
 
   // QR codes must point somewhere public; a file:// path is useless on someone else's phone.
-  const PUBLIC_BASE = 'https://madebyus.example/';
+  const PUBLIC_BASE = 'https://pixtur.github.io/madebyus/';
   const isHttp = location.protocol === 'http:' || location.protocol === 'https:';
   const base = () => isHttp ? location.origin + location.pathname : PUBLIC_BASE;
 

@@ -33,6 +33,7 @@
 
   // "Built with". Shown prominently on the label. A listed tool counts as your own
   // framework if you are one of its authors.
+  // Append only: the index is part of every link. The form shows them sorted by name.
   const ENGINES = [
     { id: 'own', name: 'Our own code', label: 'Built with our own engine' },
     { id: 'tixl', name: 'TiXL', listed: true },
@@ -43,16 +44,44 @@
     { id: 'unreal', name: 'Unreal Engine', listed: true },
     { id: 'godot', name: 'Godot', listed: true },
     { id: 'other', name: 'Other third-party engine', label: 'Built with a third-party engine' },
-    { id: 'ai', name: 'Own code, mostly AI-generated', label: 'Built on a mostly AI-generated engine' },
+    { id: 'ai', name: 'Own code, mostly AI-generated', label: 'Built on a mostly AI-generated engine' }, // legacy
+    { id: 'tooll3', name: 'Tooll 3', listed: true },
+    { id: 'pico8', name: 'PICO-8', listed: true },
+    { id: 'tic80', name: 'TIC-80', listed: true },
+    { id: 'cables', name: 'cables.gl', listed: true },
+    { id: 'vvvv', name: 'vvvv', listed: true },
+    { id: 'processing', name: 'Processing', listed: true },
+    { id: 'p5', name: 'p5.js', listed: true },
+    { id: 'of', name: 'openFrameworks', listed: true },
+    { id: 'cinder', name: 'Cinder', listed: true },
+    { id: 'three', name: 'three.js', listed: true },
+    { id: 'shadertoy', name: 'Shadertoy', listed: true },
+    { id: 'bonzomatic', name: 'Bonzomatic', listed: true },
+    { id: 'kodelife', name: 'KodeLife', listed: true },
+    { id: 'hydra', name: 'Hydra', listed: true },
+    { id: 'blender', name: 'Blender (realtime)', listed: true },
+    { id: 'raylib', name: 'raylib', listed: true },
+    { id: 'max', name: 'Max / Jitter', listed: true },
+    { id: 'vuo', name: 'Vuo', listed: true },
   ];
+
+  // Form order: own code first, listed tools by name, then the two catch-alls.
+  const ENGINE_ORDER = [0]
+    .concat(ENGINES.map((e, i) => i).filter(i => ENGINES[i].listed)
+      .sort((a, b) => ENGINES[a].name.localeCompare(ENGINES[b].name, 'en', { sensitivity: 'base' })))
+    .concat([ENGINES.findIndex(e => e.id === 'other')]);
+  // 'ai' (own code, mostly generated) is no longer offered — own code + "most of it" replaces it —
+  // but stays in ENGINES so old links still decode.
 
   // Always the first two questions of every variant.
   const FRAMEWORK_QS = [
     {
       id: 'F', short: 'F',
       title: 'What is the engine / framework?',
-      hint: 'Asked first, because it frames everything else. A third-party or mostly generated framework means B at best \u2014 unless you made that tool yourself.',
+      hint: 'Asked first, because it frames everything else. A third-party framework means B at best \u2014 unless you made that tool yourself.',
       options: ENGINES.map(e => ({ label: e.name })),
+      order: ENGINE_ORDER,
+      categorical: true, // options are not ranked; see frameworkCap
       compact: true,
     },
     {
@@ -62,24 +91,52 @@
       inline: true,
       showIf: (vals) => !!(ENGINES[vals[0]] && ENGINES[vals[0]].listed),
     },
+    {
+      id: 'Fa', short: 'Fa',
+      title: 'How much of it is AI-generated?',
+      options: [
+        { label: 'None', desc: 'AI suggestions you rewrote count as yours' },
+        { label: 'A detail', desc: 'a few generated helper functions' },
+        { label: 'A notable part', desc: 'whole generated subsystems' },
+        { label: 'Most of it' },
+      ],
+      inline: true,
+      showIf: (vals) => vals[0] === 0 || (!!(ENGINES[vals[0]] && ENGINES[vals[0]].listed) && vals[1] === 0),
+    },
   ];
   const FIRST_CONTENT = FRAMEWORK_QS.length;
 
   const isOwnTool = (vals) => ENGINES[vals[0]].listed && vals[1] === 0;
+  const isOurs = (vals) => ENGINES[vals[0]].id === 'own' || isOwnTool(vals);
+
+  /** How much of our own framework is AI-generated: 0 none, 1 detail, 2 notable, 3 most; 0 if not ours. */
+  const frameworkAi = (vals) => isOurs(vals) ? vals[2] : 0;
 
   /** "Built with TiXL \u2014 our own tool" etc. */
   function builtWith(vals) {
     const e = ENGINES[vals[0]];
+    if (e.id === 'own' && frameworkAi(vals) === 3) return 'Built on a mostly AI-generated engine';
     if (!e.listed) return e.label;
     return 'Built with ' + e.name + (isOwnTool(vals) ? ' \u2014 our own tool' : '');
   }
 
-  /** Applies the framework rule: anything but our own code or our own tool means B at best. */
+  /**
+   * The framework only ever sets a ceiling, never points: a third-party framework means B at best;
+   * our own with a generated detail A at best, with a notable or larger generated part B at best.
+   * So a third-party engine can never score better than any answer about our own.
+   */
   function frameworkCap(g, vals, notes) {
     const e = ENGINES[vals[0]];
-    if (e.id === 'own' || isOwnTool(vals)) return g;
-    if (g < B) notes.push((e.id === 'ai' ? 'Mostly AI-generated framework' : 'Third-party framework') + ': B at best.');
-    return Math.max(g, B);
+    let best = A_PLUS, why = null;
+    if (e.id === 'ai') { best = B; why = 'Mostly AI-generated framework'; }
+    else if (!isOurs(vals)) { best = B; why = 'Third-party framework'; }
+    else {
+      const fa = frameworkAi(vals);
+      if (fa >= 2) { best = B; why = fa === 3 ? 'Mostly AI-generated framework' : 'Framework partly AI-generated'; }
+      else if (fa === 1) { best = A; why = 'A detail of the framework is AI-generated'; }
+    }
+    if (g < best) notes.push(`${why}: ${MBUGrade(best)} at best.`);
+    return Math.max(g, best);
   }
 
   function makeVariant(def) {
@@ -138,7 +195,7 @@
     rules: [
       'Partly not ours: none → A+, one category → A, two or three → B, four or more → C.',
       'One category mostly not ours → D (E if two or more others are partly not ours). Two or more → F.',
-      'Third-party framework → B at best, unless you are one of its authors.',
+      'Third-party framework → B at best, unless you are one of its authors. Your own framework: an AI-generated detail → A at best, more → B at best.',
     ],
     score(vals) {
       const [x, p] = vals.slice(FIRST_CONTENT);
@@ -177,7 +234,7 @@
     rules: [
       'Points: a detail 1, a notable part 3. 0 → A+, 1 → A, up to 3 → B, up to 7 → C, more → D.',
       'One category mostly not ours → D (E if two others have notable parts not ours). Two or more → F.',
-      'Third-party framework → B at best, unless you are one of its authors.',
+      'Third-party framework → B at best, unless you are one of its authors. Your own framework: an AI-generated detail → A at best, more → B at best.',
     ],
     score(vals) {
       const cats = vals.slice(FIRST_CONTENT);
@@ -195,13 +252,13 @@
           g = Math.max(g, notable >= 2 ? E : D);
           notes.push(`${CATEGORIES[cats.indexOf(3)].name} is mostly not yours: D at best.`);
         }
-        notes.unshift(`${pts} points from the other categories.`);
+        notes.unshift(`${pts} points.`);
       }
       g = frameworkCap(g, vals, notes);
       return { gradeIndex: g, notes };
     },
     strip(vals) {
-      return CATEGORIES.map((c, i) => c.key + vals[FIRST_CONTENT + i]).join(' ');
+      return frameworkStrip(vals) + CATEGORIES.map((c, i) => c.key + vals[FIRST_CONTENT + i]).join(' ');
     },
   });
 
@@ -239,7 +296,7 @@
       'Points per category: detail 0.5, notable 2, most 6, all 10; ×0.6 if substantially reworked; effects code ×0.75.',
       'Total 0 → A+, up to 1 → A, 3 → B, 6 → C, 10 → D, 18 → E, more → F.',
       'Most of a category not ours → D at best. All of it → E at best (D if substantially reworked).',
-      'Third-party or mostly generated framework → B at best, unless you are one of its authors.',
+      'Third-party framework → B at best, unless you are one of its authors. Your own framework: an AI-generated detail → A at best, more → B at best.',
     ],
     score(vals) {
       const notes = [];
@@ -263,7 +320,7 @@
       return { gradeIndex: g, notes };
     },
     strip(vals) {
-      return CATEGORIES.map((c, i) => {
+      return frameworkStrip(vals) + CATEGORIES.map((c, i) => {
         const ext = vals[FIRST_CONTENT + i * 2];
         return c.key + ext + (ext > 0 && vals[FIRST_CONTENT + 1 + i * 2] === 0 ? 'r' : '');
       }).join(' ');
@@ -272,20 +329,28 @@
 
   function MBUGrade(i) { return root.MBU.GRADES[i]; }
 
+  /** "F1 " when part of our own framework is generated, else empty. */
+  function frameworkStrip(vals) {
+    const fa = frameworkAi(vals);
+    return fa > 0 ? 'F' + fa + ' ' : '';
+  }
+
   // ---- Scenarios for the comparison table ------------------------------------------
   // The same typical production, answered honestly in each variant.
 
   const SCENARIOS = [
-    { name: 'Own engine, everything handmade', q1: '0_00', s1: '0_00000', d1: '0_0_0_0_0_0_' },
-    { name: 'TiXL by its own authors, everything handmade', q1: '1000', s1: '1000000', d1: '100_0_0_0_0_' },
-    { name: 'Own engine, one stock font', q1: '0_01', s1: '0_01000', d1: '0_0_110_0_0_' },
-    { name: 'Own engine, AI-generated soundtrack', q1: '0_10', s1: '0_00030', d1: '0_0_0_0_410_' },
-    { name: 'Own engine, shaders mostly AI-generated then reworked', q1: '0_10', s1: '0_30000', d1: '0_300_0_0_0_' },
-    { name: 'Own framework mostly AI-generated, content handmade', q1: '9_00', s1: '9_00000', d1: '9_0_0_0_0_0_' },
-    { name: 'TiXL / Unity, everything else handmade', q1: '1100', s1: '1100000', d1: '110_0_0_0_0_' },
-    { name: 'TiXL + stock textures + sample-pack drums (reworked)', q1: '1102', s1: '1102020', d1: '110_210_200_' },
-    { name: 'Unity + asset-store 3D + AI soundtrack', q1: '5120', s1: '5100330', d1: '510_0_31410_' },
-    { name: 'Everything generated', q1: '9_20', s1: '9_33333', d1: '9_4141414141' },
+    { name: 'Own engine, everything handmade', q1: '0_000', s1: '0_000000', d1: '0_00_0_0_0_0_' },
+    { name: 'Own engine with a few AI-generated helper functions', q1: '0_100', s1: '0_100000', d1: '0_10_0_0_0_0_' },
+    { name: 'TiXL by its own authors, everything handmade', q1: '10000', s1: '10000000', d1: '1000_0_0_0_0_' },
+    { name: 'Own engine, one stock font', q1: '0_001', s1: '0_001000', d1: '0_00_110_0_0_' },
+    { name: 'Own engine with generated helpers + one AI texture', q1: '0_101', s1: '0_101000', d1: '0_10_110_0_0_' },
+    { name: 'Own engine, AI-generated soundtrack', q1: '0_010', s1: '0_000030', d1: '0_00_0_0_410_' },
+    { name: 'Own engine, shaders mostly AI-generated then reworked', q1: '0_010', s1: '0_030000', d1: '0_0300_0_0_0_' },
+    { name: 'Own framework mostly AI-generated, content handmade', q1: '0_300', s1: '0_300000', d1: '0_30_0_0_0_0_' },
+    { name: 'TiXL / Unity, everything else handmade', q1: '11_00', s1: '11_00000', d1: '11_0_0_0_0_0_' },
+    { name: 'TiXL + stock textures + sample-pack drums (reworked)', q1: '11_02', s1: '11_02020', d1: '11_0_210_200_' },
+    { name: 'Unity + asset-store 3D + AI soundtrack', q1: '51_20', s1: '51_00330', d1: '51_0_0_31410_' },
+    { name: 'Everything generated', q1: '0_320', s1: '0_333333', d1: '0_34141414141' },
   ];
 
   root.MBU.VARIANTS = { q1: quick, s1: standard, d1: detailed };

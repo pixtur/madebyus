@@ -10,7 +10,11 @@
   const isHttp = location.protocol === 'http:' || location.protocol === 'https:';
   const base = () => isHttp ? location.origin + location.pathname : PUBLIC_BASE;
 
-  const state = { tab: 's1', vals: [], prod: null };
+  // Questionnaires offered in the form. The others stay in variants.js so their links still open,
+  // and #compare still works; add them back here to bring back the tabs.
+  const OFFERED_VARIANTS = ['s1'];
+
+  const state = { tab: OFFERED_VARIANTS[0], vals: [], prod: null };
   const variant = () => V[state.tab];
   const resetVals = () => { state.vals = variant().questions.map(() => null); };
 
@@ -96,7 +100,8 @@
   // ---- Tabs -----------------------------------------------------------------------
 
   function buildTabs() {
-    const tabs = M.VARIANT_ORDER.map(id => ({ id, name: V[id].name, blurb: V[id].blurb }))
+    if (OFFERED_VARIANTS.length < 2) { $('tabs').hidden = true; return; }
+    const tabs = OFFERED_VARIANTS.map(id => ({ id, name: V[id].name, blurb: V[id].blurb }))
       .concat([{ id: 'compare', name: 'Compare', blurb: 'The same productions graded by all three.' }]);
     $('tabs').innerHTML = tabs.map(t =>
       `<button type="button" role="tab" data-tab="${t.id}">${t.name}<small>${esc(t.blurb)}</small></button>`).join('');
@@ -112,6 +117,7 @@
   }
 
   function markTab(id) {
+    renderRules(id === 'compare' ? M.VARIANT_ORDER : [id]);
     for (const b of $('tabs').querySelectorAll('button')) b.setAttribute('aria-selected', String(b.dataset.tab === id));
   }
 
@@ -136,7 +142,8 @@
     host.innerHTML = '';
     let fs = null;
     v.questions.forEach((q, i) => {
-      const opts = q.options.map((o, idx) => optionHtml(q, i, o, idx)).join('');
+      const order = q.order || q.options.map((o, idx) => idx);
+      const opts = order.map(idx => optionHtml(q, i, q.options[idx], idx)).join('');
       if (q.inline && fs) {
         const sub = document.createElement('div');
         sub.className = 'sub';
@@ -259,8 +266,12 @@
 
   // ---- Rules text ---------------------------------------------------------------------
 
-  $('rules').innerHTML = M.VARIANT_ORDER.map(id =>
-    `<h3>${V[id].name} (${id})</h3><ul>${V[id].rules.map(r => `<li>${esc(r)}</li>`).join('')}</ul>`).join('');
+  /** Scoring rules of the questionnaire on screen (all of them on the comparison). */
+  function renderRules(ids) {
+    const single = ids.length === 1 && OFFERED_VARIANTS.length === 1 && ids[0] === OFFERED_VARIANTS[0];
+    $('rules').innerHTML = ids.map(id =>
+      `<h3>${single ? 'Scoring' : `${V[id].name} (${id})`}</h3><ul>${V[id].rules.map(r => `<li>${esc(r)}</li>`).join('')}</ul>`).join('');
+  }
 
   // ---- Routing ------------------------------------------------------------------------
 
@@ -276,6 +287,7 @@
   $('prod-id').addEventListener('input', () => { readForm(); updateEdit(); });
   $('btn-edit').addEventListener('click', showEdit);
   $('btn-new').addEventListener('click', () => {
+    state.tab = OFFERED_VARIANTS[0]; // a hidden questionnaire is only reachable through its links
     resetVals();
     state.prod = null;
     history.replaceState(null, '', location.pathname + location.search);

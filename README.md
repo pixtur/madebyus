@@ -4,8 +4,10 @@ A voluntary self-assessment label for demoscene productions: how much of it was 
 authors ("us", guests included), condensed into one opinionated fridge-sticker grade (A+ … F), with the
 answers always one click away.
 
-This version offers **three questionnaires of increasing precision** so the group can decide how much
-simplicity is acceptable. The **Compare** tab grades the same typical productions with all three.
+There are **three questionnaires of increasing precision**. The group chose **Standard** as the sweet
+spot, so the page offers only that one (`OFFERED_VARIANTS` in `app.js`). Quick and Detailed stay in
+`variants.js`: their links still open, and `/#compare` still grades the same typical productions with
+all three. Add them back to `OFFERED_VARIANTS` to bring back the tabs.
 
 Open `index.html` in a browser (works from `file://`), or serve the folder:
 
@@ -22,6 +24,9 @@ Tests (scenario grades, encoding, group rules, exhaustive monotonicity per varia
 - The framework is asked first and printed on the label ("Built with TiXL"). A third-party engine or
   demotool, or a mostly generated framework → **B at best** — unless the production's authors are also
   that tool's authors ("Built with TiXL — our own tool"), which counts as an own framework.
+- For your own framework we ask how much of it is AI-generated: none / a detail / a notable part / most.
+  A detail → A at best, more → B at best. The framework only ever sets a ceiling, never points, so a
+  third-party engine can never score better than an honest answer about your own.
 - Does not count: AI advice and debugging, AI suggestions you rewrote, tools that do not ship
   (DAW, Blender, compiler, packer), OS, graphics API and standard libraries.
 
@@ -49,19 +54,20 @@ reworked by us" or "used mostly as-is". Points 0.5 / 2 / 6 / 10, ×0.6 if rework
 
 All three cap at B for a third-party framework.
 
-The first two answer characters are the framework: `0` own code, `1` TiXL, `2` Notch, `3` TouchDesigner,
-`4` Werkzeug, `5` Unity, `6` Unreal, `7` Godot, `8` other third-party, `9` own but mostly AI-generated;
-then `0` "it's ours" / `1` no for listed tools, `_` otherwise. Add tools in `ENGINES` in `variants.js`
-(append only — the index is part of the link).
+The first three answer characters are the framework: the base-36 index into `ENGINES` in `variants.js`
+(`0` own code, `1` TiXL, `5` Unity, `8` other third-party, … — `9` is a legacy "mostly AI-generated" entry
+that still decodes but is no longer offered), then `0` "it's ours" / `1` no for listed tools (`_` otherwise),
+then the AI share of our own framework `0`–`3` (`_` if it is not ours). Add tools by appending to `ENGINES`
+(append only — the index is part of the link; the form sorts them by name). Room for 36.
 
 ## The link is the record
 
-    https://<site>/#s1/1100030/pz94176
+    https://<site>/#s1/11_00030/pz94176
                     │  │      └ optional production: dz<id> = Demozoo, pz<id> = Pouët
                     │  └ one base-36 character per question: the option index (0 = best), "_" = not asked
                     └ variant and its scoring version
 
-Short form for NFOs and scrollers: `MBU-s1-1100030-pz94176`.
+Short form for NFOs and scrollers: `MBU-s1-11_00030-pz94176`.
 
 Scoring changes get a new variant version (`s2`, …). Once labels exist in the wild, old versions must
 keep decoding and rendering with their own scoring.

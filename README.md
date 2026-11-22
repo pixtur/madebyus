@@ -1,5 +1,55 @@
 # Made by Us — prototype
 
+A bunch of people have been discussing how to deal with GenAI content at demo-parties:
+
+1. The quality of AI-generated code and content has reached frightening levels.
+2. Detecting GenAI is hard and will become impossible.
+3. Enforcing 100% AI-free content at demoscene parties will put an additional burden on already stretched orgas and will cripple compos (basically disqualifying all 3rd-party engines).
+4. Making releases (not generating them) is fun and an essential part that (hopefully) will not go away.
+
+This is an attempt at a middle ground:
+
+1. We establish a fast, simple self-assessment label that honors self-made stuff.
+2. It would be hosted on a stable URL (ideally scene.org).
+3. Party tools could include the form as a voluntary link and show it as a small label on the production slide.
+4. Filling it out takes less time than creating the Pouët screenshot.
+5. If people cheat, they may get disqualified.
+6. Parties could allow releases with some degree of 3rd-party contribution. The audience can use their own preference for voting.
+
+It's not perfect:
+
+1. It's intrinsically judging good/bad.
+2. It simplifies to an almost unacceptable degree.
+3. People could cheat or refuse to fill it out.
+4. It lumps together GenAI and 3rd-party assets.
+
+But it's better than splitting the scene by trying to enforce rules that can't be enforced.
+
+It's a compromise and a work in progress that tries to stay simple without becoming meaningless.
+
+So, the questions:
+
+1. As a visitor, would you like to see this label for releases (on the slides or in the live-voting details)?
+2. As a creator, would you feel comfortable sharing this information?
+3. Which concrete changes would you like to see?
+
+Some ideas that have already been voiced:
+
+1. This should be split into categories (code, visuals, music, etc.).
+2. It should use percentages instead of a rating label.
+
+Before replying:
+
+- Please take 1 minute to fill out the form: https://pixtur.github.io/madebyus
+
+
+And yes, I'm aware that vibe-coding this thing might gaslight many. :-)
+(I'm too busy making demos).
+
+
+
+# More details
+
 A voluntary self-assessment label for demoscene productions: how much of it was made by its credited
 authors ("us", guests included), condensed into one opinionated fridge-sticker grade (A+ … F), with the
 answers always one click away.
@@ -30,7 +80,12 @@ Tests (scenario grades, encoding, group rules, exhaustive monotonicity per varia
 - Does not count: AI advice and debugging, AI suggestions you rewrote, tools that do not ship
   (DAW, Blender, compiler, packer), OS, graphics API and standard libraries.
 
-Content categories: effects code, visuals & design, 3D & motion, audio, direction & text.
+Content categories (`s2`): effects code, visuals & 3D, audio, direction & text. The older `s1`, Quick and
+Detailed keep visuals & design and 3D & motion apart.
+
+Label styles (display only, picked per viewer): Grade, Mono, Bars, Percent, Minimal, and two compact ones
+for the party slide — Slide (horizontal bars) and Columns (vertical bars). Bars, Percent, Slide and Columns
+show an estimated "ours" share per part (`OURS_STD` in `variants.js`); grades never use it.
 
 ## The variants
 
@@ -44,7 +99,10 @@ Content categories: effects code, visuals & design, 3D & motion, audio, directio
 **Quick** — how many categories are *mostly* not ours (0 / 1 / 2+), how many *partly* (0 / 1 / 2–3 / 4+).
 Partly: A+, A, B, C. One mostly → D (E with 2+ partly). Two or more mostly → F.
 
-**Standard** — per category: all ours / a detail isn't / a notable part isn't / most or all isn't.
+**Standard** (`s2`, offered) — like `s1`, but with visuals and 3D merged into one category, "Visuals & 3D":
+effects code, visuals & 3D, audio, direction & text. `s1` (five categories) stays decodable for old links.
+
+**Standard v1** (`s1`) — per category: all ours / a detail isn't / a notable part isn't / most or all isn't.
 Points detail 1, notable 3: 0 → A+, 1 → A, ≤3 → B, ≤7 → C, more → D. One "most" → D (E with 2+ notable),
 two or more → F.
 
@@ -62,12 +120,18 @@ then the AI share of our own framework `0`–`3` (`_` if it is not ours). Add to
 
 ## The link is the record
 
-    https://<site>/#s1/11_00030/pz94176
-                    │  │      └ optional production: dz<id> = Demozoo, pz<id> = Pouët
+    https://<site>/#s1/11_00030/pz94176?t=Elevated&by=RGBA&at=Revision+2026
+                    │  │        │       └ optional free text (URL-encoded, max 80 chars each):
+                    │  │        │         t = title, by = group or author, at = party
+                    │  │        └ optional database id, usually added after the party:
+                    │  │          dz<id> = Demozoo, pz<id> = Pouët
                     │  └ one base-36 character per question: the option index (0 = best), "_" = not asked
                     └ variant and its scoring version
 
-Short form for NFOs and scrollers: `MBU-s1-11_00030-pz94176`.
+A release has no Demozoo or Pouët entry yet when the label is made at the party, so title, group and
+party are free text and printed on the label. Adding the id later changes the link but not the answers.
+
+Short form for NFOs and scrollers: `MBU-s1-11_00030-pz94176` (answers and id only, no free text).
 
 Scoring changes get a new variant version (`s2`, …). Once labels exist in the wild, old versions must
 keep decoding and rendering with their own scoring.

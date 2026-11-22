@@ -33,16 +33,34 @@
   };
   for (const s of M.SCENARIOS) {
     for (const vid of M.VARIANT_ORDER) eq(`scenario decodes: ${vid} ${s.name}`, !!V[vid].decode(s[vid]), true);
-    eq('scenario grades: ' + s.name, M.VARIANT_ORDER.map(vid => grade(vid, s[vid])), expected[s.name]);
+    eq('scenario grades: ' + s.name, ['q1', 's1', 'd1'].map(vid => grade(vid, s[vid])), expected[s.name]);
+    eq('merging visuals and 3D keeps the grade: ' + s.name, grade('s2', s.s2), grade('s1', s.s1));
   }
 
   // Records
-  const rec = { variant: 's1', answers: '11_00030', prod: 'pz94176' };
+  const noNames = { title: null, by: null, at: null };
+  const rec = { variant: 's1', answers: '11_00030', prod: 'pz94176', ...noNames };
   eq('record round trip', M.decodeRecord('#' + M.encodeRecord(rec), V), rec);
   eq('short code', M.shortCode(rec), 'MBU-s1-11_00030-pz94176');
   eq('short code decodes', M.decodeRecord(M.shortCode(rec), V), rec);
-  eq('hidden slots survive short code', M.decodeRecord('MBU-d1-0_00_110_0_0_', V), { variant: 'd1', answers: '0_00_110_0_0_', prod: null });
-  eq('full url', M.decodeRecord('https://x.example/#q1/0_012', V), { variant: 'q1', answers: '0_012', prod: null });
+  eq('hidden slots survive short code', M.decodeRecord('MBU-d1-0_00_110_0_0_', V), { variant: 'd1', answers: '0_00_110_0_0_', prod: null, ...noNames });
+  eq('full url', M.decodeRecord('https://x.example/#q1/0_012', V), { variant: 'q1', answers: '0_012', prod: null, ...noNames });
+
+  // Free-text names: usable before any Demozoo / Pouët entry exists.
+  const named = { variant: 's1', answers: '0_000000', prod: null, title: 'Ünd / Äus & <Co>?', by: 'Group #1 + friends', at: 'Revision 2026' };
+  eq('names round trip', M.decodeRecord('#' + M.encodeRecord(named), V), named);
+  eq('names round trip through a full url', M.decodeRecord('https://x.example/#' + M.encodeRecord(named), V), named);
+  eq('names and production id', M.decodeRecord('s1/0_000000/pz42?t=Elevated&by=RGBA', V),
+    { variant: 's1', answers: '0_000000', prod: 'pz42', title: 'Elevated', by: 'RGBA', at: null });
+  eq('id can be added later, answers unchanged', M.encodeRecord({ ...named, prod: 'dz7' }).startsWith('s1/0_000000/dz7?'), true);
+  eq('names not in short code', M.shortCode(named), 'MBU-s1-0_000000');
+  eq('unknown keys ignored', M.decodeRecord('s1/0_000000?x=1&t=A', V).title, 'A');
+  eq('too long name rejected', M.decodeRecord('s1/0_000000?t=' + 'x'.repeat(M.NAME_MAX + 1), V), null);
+  eq('control characters removed', M.cleanName(' a\nb\tc '), 'a b c');
+  eq('empty name is null', M.cleanName('   '), null);
+  eq('name line', M.nameLine(named), '\u201cÜnd / Äus & <Co>?\u201d by Group #1 + friends @ Revision 2026');
+  eq('name line, group only', M.nameLine({ by: 'RGBA' }), 'by RGBA');
+  eq('no name line', M.nameLine({}), null);
 
   // Rejections
   eq('unknown variant', M.decodeRecord('x1/000', V), null);
@@ -69,7 +87,7 @@
   eq('detailed: rework needed when asked', V.d1.isComplete([0, null, 0, 1, null, 0, null, 0, null, 0, null, 0, null]), false);
 
   // Group rules, every variant
-  const allOk = { q1: '0_000', s1: '0_000000', d1: '0_00_0_0_0_0_' };
+  const allOk = { q1: '0_000', s1: '0_000000', d1: '0_00_0_0_0_0_', s2: '0_00000' };
   for (const vid of M.VARIANT_ORDER) {
     const rest = allOk[vid].slice(3);
     eq(`${vid}: all ours -> A+`, grade(vid, allOk[vid]), 'A+');
@@ -172,6 +190,46 @@
   const svg = M.labelSvg({ gradeIndex: 2, headline: 'Built with TiXL', detail: 'E1 V0 M0 A0 D0' }, { count: 2, isDark: (r, c) => r === c });
   eq('label svg', svg.startsWith('<svg') && svg.includes('M0 0h1v1h-1z') && svg.includes('Built with TiXL'), true);
   eq('label escapes text', M.labelSvg({ gradeIndex: 0, headline: '<x>', detail: 'a&b' }, null).includes('&lt;x>'), true);
+  // Standard v2: visuals and 3D merged.
+  eq('s2 has four content categories', V.s2.questions.length - 3, 4);
+  eq('s2 merged category', V.s2.questions[4].title, 'Visuals & 3D');
+  eq('s1 still decodes with five', !!V.s1.decode('0_000000') && !V.s2.decode('0_000000'), true);
+  eq('s1 -> s2 takes the larger of visuals and 3D', [M.s1ToS2('11_01230'), M.s1ToS2('11_02130')], ['11_0230', '11_0230']);
+  eq('s2 slide names', V.s2.parts(V.s2.decode('0_00000')).map(p => p.short), ['Engine', 'Effects', 'Visuals', 'Audio', 'Direction']);
+
+  // Label styles: every style renders for every variant; bars and percent fall back without parts.
+  const labelOf = (vid, code) => {
+    const v = V[vid], vals = v.decode(code), parts = v.parts ? v.parts(vals) : null;
+    return { gradeIndex: v.score(vals).gradeIndex, headline: M.builtWith(vals), name: 'x', detail: v.strip(vals),
+      parts, percent: parts ? parts.reduce((a, p) => a + p.ours, 0) / parts.length : null };
+  };
+  const qr2 = { count: 2, isDark: (r, c) => r === c };
+  for (const st of M.LABEL_STYLES) for (const vid of M.VARIANT_ORDER) {
+    const svg = M.labelSvg(labelOf(vid, M.SCENARIOS[3][vid]), qr2, st.id);
+    eq(`style ${st.id} renders for ${vid}`, svg.startsWith('<svg') && svg.endsWith('</svg>') && svg.includes('M0 0h1v1h-1z'), true);
+  }
+  const ownAll = labelOf('s1', '0_000000');
+  eq('bars: six parts, all ours', ownAll.parts.map(p => p.ours), [1, 1, 1, 1, 1, 1]);
+  eq('percent: all ours is 100%', M.labelSvg(ownAll, null, 'percent').includes('>100%<'), true);
+  eq('percent: third-party engine, rest ours', Math.round(labelOf('s1', '51_00000').percent * 100), 83);
+  eq('percent: AI soundtrack', Math.round(labelOf('s1', '0_000003').percent * 100), 88);
+  eq('bars: framework share follows AI share', labelOf('s1', '0_200000').parts[0].ours, 0.7);
+  eq('quick has no parts', V.q1.parts, undefined);
+  eq('bars falls back to grade without parts', M.labelSvg(labelOf('q1', '0_000'), null, 'bars').includes('>A+<'), true);
+  eq('mono uses no grade colors', M.GRADE_COLORS.every(c => !M.labelSvg(ownAll, null, 'mono').includes(c)), true);
+  const slide = M.labelSvg(labelOf('s2', '0_00203'), qr2, 'slide');
+  eq('slide: no percentages, no codes, no name', !/\d%/.test(slide) && !slide.includes('E0') && !slide.includes('>x<'), true);
+  eq('slide: short part names', ['Engine', 'Effects', 'Visuals', 'Audio', 'Direction'].every(n => slide.includes('>' + n + '<')), true);
+  eq('columns: short part names', ['Engine', 'Direction'].every(n => M.labelSvg(labelOf('s2', '0_00000'), qr2, 'columns').includes('>' + n + '<')), true);
+  const colsTixl = M.labelSvg({ ...labelOf('s2', '11_0000'), headline: 'Built with TiXL' }, qr2, 'columns');
+  eq('columns: brand continues with …with', colsTixl.includes('>\u2026with TiXL<') && !colsTixl.includes('Built with'), true);
+  eq('compact styles fall back to minimal without parts', M.labelSvg(labelOf('q1', '0_000'), null, 'columns'), M.labelSvg(labelOf('q1', '0_000'), null, 'minimal'));
+  eq('unknown style falls back to grade', M.labelSvg(ownAll, null, 'nope') === M.labelSvg(ownAll, null, 'grade'), true);
+
+  const namedSvg = M.labelSvg({ gradeIndex: 0, headline: 'Built with our own engine', name: '\u201cA&B\u201d by <C>', detail: 'E0' }, null);
+  eq('label shows escaped name', namedSvg.includes('A&amp;B') && namedSvg.includes('&lt;C>'), true);
+  eq('label grows for the name line', namedSvg.includes('height="192"'), true);
+  eq('long name truncated on label', M.labelSvg({ gradeIndex: 0, headline: 'x', name: 'y'.repeat(60), detail: 'E0' }, null).includes('y'.repeat(39) + '\u2026'), true);
 
   lines.push(fails ? `${fails} FAILED` : 'ALL PASSED');
   document.getElementById('out').textContent = lines.join('\n');

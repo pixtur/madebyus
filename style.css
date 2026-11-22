@@ -103,3 +103,10 @@ table.compare th.g { text-align: center; }
 .prose li { margin: 4px 0; }
 a { color: var(--accent); }
 footer { color: var(--muted); font-size: 13px; padding-bottom: 30px; }
+
+.style-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 12px; font-size: 13px; }
+.chip-btn {
+  background: transparent; color: var(--ink); border: 1px solid var(--line); border-radius: 999px;
+  padding: 3px 11px; font-weight: 500; font-size: 13px;
+}
+.chip-btn[aria-pressed="true"] { background: var(--ink); color: var(--card); border-color: transparent; }

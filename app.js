@@ -12,9 +12,12 @@
 
   // Questionnaires offered in the form. The others stay in variants.js so their links still open,
   // and #compare still works; add them back here to bring back the tabs.
-  const OFFERED_VARIANTS = ['s1'];
+  const OFFERED_VARIANTS = ['s2'];
 
-  const state = { tab: OFFERED_VARIANTS[0], vals: [], prod: null };
+  const state = { tab: OFFERED_VARIANTS[0], vals: [], prod: null, title: null, by: null, at: null };
+  const NAME_INPUTS = [['title', 'prod-title'], ['by', 'prod-by'], ['at', 'prod-at']];
+  const record = (variant, answers) =>
+    ({ variant, answers, prod: state.prod, title: state.title, by: state.by, at: state.at });
   const variant = () => V[state.tab];
   const resetVals = () => { state.vals = variant().questions.map(() => null); };
 
@@ -35,15 +38,40 @@
     const vals = v.decode(rec.answers);
     const s = v.score(vals);
     const p = M.parseProduction(rec.prod);
+    const parts = v.parts ? v.parts(vals) : null;
     return {
+      parts,
+      percent: parts ? parts.reduce((sum, x) => sum + x.ours, 0) / parts.length : null,
       gradeIndex: s.gradeIndex,
       headline: M.builtWith(vals),
+      name: M.nameLine(rec),
       detail: [v.strip(vals)].concat(p ? [p.label] : []).join(' · '),
       notes: s.notes,
     };
   }
 
-  const svgFor = (rec) => M.labelSvg(labelFor(rec), makeQr(recordUrl(rec)));
+  // Label style is a viewing preference, not part of the record.
+  let labelStyle = 'grade';
+  try { labelStyle = localStorage.getItem('mbu-label-style') || 'grade'; } catch { /* storage blocked */ }
+  if (!M.LABEL_STYLES.some(x => x.id === labelStyle)) labelStyle = 'grade';
+
+  const svgFor = (rec) => M.labelSvg(labelFor(rec), makeQr(recordUrl(rec)), labelStyle);
+
+  function renderStylePicker() {
+    for (const host of document.querySelectorAll('.style-picker')) {
+      host.innerHTML = '<span class="muted">Label style:</span> ' + M.LABEL_STYLES.map(st =>
+        `<button type="button" class="chip-btn" data-style="${st.id}" aria-pressed="${st.id === labelStyle}" title="${esc(st.desc)}">${esc(st.name)}</button>`).join('');
+    }
+  }
+
+  document.addEventListener('click', (ev) => {
+    const b = ev.target.closest('button[data-style]');
+    if (!b) return;
+    labelStyle = b.dataset.style;
+    try { localStorage.setItem('mbu-label-style', labelStyle); } catch { /* storage blocked */ }
+    renderStylePicker();
+    rerenderLabel();
+  });
 
   // ---- Actions -------------------------------------------------------------------
 
@@ -170,6 +198,7 @@
     for (let i = 0; i < v.questions.length; i++) if (!v.visible(state.vals, i)) state.vals[i] = null;
     const site = $('prod-site').value, id = $('prod-id').value.trim();
     state.prod = site && M.parseProduction(site + id) ? site + id : null;
+    for (const [field, input] of NAME_INPUTS) state[field] = M.cleanName($(input).value);
   }
 
   function syncForm() {
@@ -179,6 +208,7 @@
     const p = M.parseProduction(state.prod);
     $('prod-site').value = p ? p.site : '';
     $('prod-id').value = p ? p.id : '';
+    for (const [field, input] of NAME_INPUTS) $(input).value = state[field] || '';
   }
 
   function updateEdit() {
@@ -196,7 +226,7 @@
     }
 
     if (v.isComplete(state.vals)) {
-      const rec = { variant: v.id, answers: v.encode(state.vals), prod: state.prod };
+      const rec = record(v.id, v.encode(state.vals));
       $('edit-label').innerHTML = svgFor(rec);
       renderNotes($('edit-notes'), labelFor(rec).notes);
       renderActions($('edit-actions'), rec);
@@ -222,12 +252,22 @@
 
   // ---- View mode ----------------------------------------------------------------------
 
+  let viewedRec = null;
+
+  /** Redraws whichever label is on screen, keeping the form as it is. */
+  function rerenderLabel() {
+    if (!$('edit').hidden) updateEdit();
+    else if (!$('view').hidden && viewedRec) showView(viewedRec);
+  }
+
   function showView(rec) {
+    viewedRec = rec;
     const v = V[rec.variant];
     const vals = v.decode(rec.answers);
     state.tab = rec.variant;
     state.vals = vals;
     state.prod = rec.prod;
+    for (const [field] of NAME_INPUTS) state[field] = rec[field];
     markTab(rec.variant);
     show('view');
 
@@ -235,9 +275,12 @@
     renderActions($('view-actions'), rec);
     $('view-variant').textContent = v.name + ' questionnaire';
     const p = M.parseProduction(rec.prod);
-    $('view-prod').innerHTML = p
-      ? `<p>Claimed for <a href="${p.url}" target="_blank" rel="noopener">${esc(p.label)}</a>.</p>`
-      : '<p class="hint">Not linked to a production.</p>';
+    const name = M.nameLine(rec);
+    const link = p ? `<a href="${p.url}" target="_blank" rel="noopener">${esc(p.label)}</a>` : null;
+    $('view-prod').innerHTML =
+      (name || link ? `<p>Claimed for ${[name ? `<b>${esc(name)}</b>` : null, link].filter(Boolean).join(' · ')}.</p>`
+                    : '<p class="hint">No production named.</p>') +
+      (p ? '' : '<p class="hint">No Demozoo or Pouët entry yet — add it with “Edit these answers” once it exists.</p>');
     const rows = [];
     v.questions.forEach((q, i) => {
       if (!v.visible(vals, i)) return;
@@ -283,13 +326,16 @@
   }
 
   buildTabs();
+  renderStylePicker();
   $('form').addEventListener('change', () => { readForm(); updateEdit(); });
-  $('prod-id').addEventListener('input', () => { readForm(); updateEdit(); });
+  for (const id of ['prod-id', 'prod-title', 'prod-by', 'prod-at'])
+    $(id).addEventListener('input', () => { readForm(); updateEdit(); });
   $('btn-edit').addEventListener('click', showEdit);
   $('btn-new').addEventListener('click', () => {
     state.tab = OFFERED_VARIANTS[0]; // a hidden questionnaire is only reachable through its links
     resetVals();
     state.prod = null;
+    for (const [field] of NAME_INPUTS) state[field] = null;
     history.replaceState(null, '', location.pathname + location.search);
     showEdit();
   });

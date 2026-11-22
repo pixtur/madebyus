@@ -16,19 +16,29 @@
 
   const A_PLUS = 0, A = 1, B = 2, C = 3, D = 4, E = 5, F = 6;
 
-  // Content categories. The framework is asked separately and first.
+  // Content categories (v1). The framework is asked separately and first.
   // ex: category-specific examples shown next to the answers.
-  const CATEGORIES = [
-    { key: 'E', name: 'Effects code', hint: 'shaders, synthesis, the effects you actually see',
+  const CATEGORIES_V1 = [
+    { key: 'E', name: 'Effects code', short: 'Effects', hint: 'shaders, synthesis, the effects you actually see',
       ex: { detail: 'one noise function from Shadertoy', notable: 'a few generated or copied shaders', all: 'the effects themselves' } },
-    { key: 'V', name: 'Visuals & design', hint: 'textures, images, fonts, 2D art, look and style',
+    { key: 'V', name: 'Visuals & design', short: 'Visuals', hint: 'textures, images, fonts, 2D art, look and style',
       ex: { detail: 'a font, one stock texture', notable: 'a set of stock or generated textures', all: 'the images and the look' } },
-    { key: 'M', name: '3D & motion', hint: 'geometry, animation, camera, simulation',
+    { key: 'M', name: '3D & motion', short: '3D', hint: 'geometry, animation, camera, simulation',
       ex: { detail: 'one downloaded model', notable: 'an asset-store scene, mocap clips', all: 'the scenes and animation' } },
-    { key: 'A', name: 'Audio', hint: 'music, samples, sound design',
+    { key: 'A', name: 'Audio', short: 'Audio', hint: 'music, samples, sound design',
       ex: { detail: 'a sample, one drum loop', notable: 'a sample pack, generated vocals', all: 'the whole soundtrack' } },
-    { key: 'D', name: 'Direction & text', hint: 'concept, storyboard, pacing, scroller, NFO',
+    { key: 'D', name: 'Direction & text', short: 'Direction', hint: 'concept, storyboard, pacing, scroller, NFO',
       ex: { detail: 'a quote, a generated NFO', notable: 'generated scroller text or storyboard', all: 'the concept or script' } },
+  ];
+
+  // v2: visuals and 3D merged. Used by Standard s2; the v1 list stays for s1, Quick and Detailed links.
+  const CATEGORIES_V2 = [
+    CATEGORIES_V1[0],
+    { key: 'V', name: 'Visuals & 3D', short: 'Visuals',
+      hint: 'textures, images, fonts, 2D art, geometry, animation, camera, look and style',
+      ex: { detail: 'a font, one stock texture, one downloaded model', notable: 'stock textures, an asset-store scene, mocap clips', all: 'the images, scenes and animation' } },
+    CATEGORIES_V1[3],
+    CATEGORIES_V1[4],
   ];
 
   // "Built with". Shown prominently on the label. A listed tool counts as your own
@@ -182,7 +192,7 @@
       {
         id: 'X', short: 'X',
         title: 'In how many content categories is most or all of it not made by you?',
-        hint: 'Categories: ' + CATEGORIES.map(c => c.name.toLowerCase()).join(', ') + '.',
+        hint: 'Categories: ' + CATEGORIES_V1.map(c => c.name.toLowerCase()).join(', ') + '.',
         options: [{ label: 'None' }, { label: 'One' }, { label: 'Two or more' }],
       },
       {
@@ -226,9 +236,10 @@
     { label: 'Most or all of it isn’t', desc: c.ex.all },
   ];
 
-  const standard = makeVariant({
-    id: 's1', name: 'Standard', blurb: '6 questions. One four-step answer per category.',
-    questions: FRAMEWORK_QS.concat(CATEGORIES.map(c => ({
+  function makeStandard(id, name, blurb, cats) {
+   return makeVariant({
+    id, name, blurb, categories: cats,
+    questions: FRAMEWORK_QS.concat(cats.map(c => ({
       id: c.key, short: c.key, title: c.name, hint: c.hint, options: stdOptions(c), compact: true,
     }))),
     rules: [
@@ -237,8 +248,8 @@
       'Third-party framework → B at best, unless you are one of its authors. Your own framework: an AI-generated detail → A at best, more → B at best.',
     ],
     score(vals) {
-      const cats = vals.slice(FIRST_CONTENT);
-      const count = (v) => cats.filter(x => x === v).length;
+      const answers = vals.slice(FIRST_CONTENT);
+      const count = (v) => answers.filter(x => x === v).length;
       const most = count(3), notable = count(2), detail = count(1);
       const notes = [];
       let g;
@@ -250,7 +261,7 @@
         g = pts === 0 ? A_PLUS : pts <= 1 ? A : pts <= 3 ? B : pts <= 7 ? C : D;
         if (most === 1) {
           g = Math.max(g, notable >= 2 ? E : D);
-          notes.push(`${CATEGORIES[cats.indexOf(3)].name} is mostly not yours: D at best.`);
+          notes.push(`${cats[answers.indexOf(3)].name} is mostly not yours: D at best.`);
         }
         notes.unshift(`${pts} points.`);
       }
@@ -258,9 +269,17 @@
       return { gradeIndex: g, notes };
     },
     strip(vals) {
-      return frameworkStrip(vals) + CATEGORIES.map((c, i) => c.key + vals[FIRST_CONTENT + i]).join(' ');
+      return frameworkStrip(vals) + cats.map((c, i) => c.key + vals[FIRST_CONTENT + i]).join(' ');
     },
-  });
+    parts(vals) {
+      return partsFrom(vals, (i) => OURS_STD[vals[FIRST_CONTENT + i]], cats);
+    },
+   });
+  }
+
+  const standard = makeStandard('s1', 'Standard v1', '6 questions. One four-step answer per category.', CATEGORIES_V1);
+  const standard2 = makeStandard('s2', 'Standard', '5 questions. Visuals and 3D as one category.', CATEGORIES_V2);
+
 
   // ---- Detailed: extent in five steps + rework, weighted ---------------------------
 
@@ -280,7 +299,7 @@
   const WEIGHTS = { E: 0.75, V: 1, M: 1, A: 1, D: 1 };
 
   const detailedQuestions = FRAMEWORK_QS.slice();
-  CATEGORIES.forEach((c) => {
+  CATEGORIES_V1.forEach((c) => {
     const extIndex = detailedQuestions.length;
     detailedQuestions.push({ id: c.key, short: c.key, title: c.name, hint: c.hint, options: extentOptions(c), compact: true });
     detailedQuestions.push({
@@ -302,7 +321,7 @@
       const notes = [];
       let total = 0;
       let floor = -1;
-      CATEGORIES.forEach((c, i) => {
+      CATEGORIES_V1.forEach((c, i) => {
         const ext = vals[FIRST_CONTENT + i * 2];
         const reworked = vals[FIRST_CONTENT + 1 + i * 2] === 0;
         total += EXTENT_POINTS[ext] * (ext > 0 && reworked ? REWORK_FACTOR : 1) * WEIGHTS[c.key];
@@ -320,14 +339,33 @@
       return { gradeIndex: g, notes };
     },
     strip(vals) {
-      return frameworkStrip(vals) + CATEGORIES.map((c, i) => {
+      return frameworkStrip(vals) + CATEGORIES_V1.map((c, i) => {
         const ext = vals[FIRST_CONTENT + i * 2];
         return c.key + ext + (ext > 0 && vals[FIRST_CONTENT + 1 + i * 2] === 0 ? 'r' : '');
       }).join(' ');
     },
+    parts(vals) {
+      return partsFrom(vals, (i) => OURS_DETAILED[vals[FIRST_CONTENT + i * 2]]);
+    },
   });
 
   function MBUGrade(i) { return root.MBU.GRADES[i]; }
+
+  // ---- Estimated "ours" share, for the bar and percent label styles -----------------
+  // A display estimate only; grades never use it.
+  const OURS_STD = [1, 0.95, 0.7, 0.25];      // all ours / detail / notable / most or all isn't
+  const OURS_DETAILED = [1, 0.95, 0.7, 0.35, 0]; // … / most / all isn't
+
+  /** Framework share: 0 for a third-party engine, else from its AI-generated part. */
+  function frameworkOurs(vals) {
+    if (ENGINES[vals[0]].id === 'ai') return OURS_STD[3];
+    return isOurs(vals) ? OURS_STD[frameworkAi(vals)] : 0;
+  }
+
+  function partsFrom(vals, categoryOurs, cats = CATEGORIES_V1) {
+    return [{ name: 'Framework', short: 'Engine', ours: frameworkOurs(vals) }]
+      .concat(cats.map((c, i) => ({ name: c.name, short: c.short, ours: categoryOurs(i) })));
+  }
 
   /** "F1 " when part of our own framework is generated, else empty. */
   function frameworkStrip(vals) {
@@ -353,9 +391,15 @@
     { name: 'Everything generated', q1: '0_320', s1: '0_333333', d1: '0_34141414141' },
   ];
 
-  root.MBU.VARIANTS = { q1: quick, s1: standard, d1: detailed };
-  root.MBU.VARIANT_ORDER = ['q1', 's1', 'd1'];
-  root.MBU.CATEGORIES = CATEGORIES;
+  // s2 answers for a scenario: the s1 answers with visuals and 3D merged (the larger share wins).
+  const s1ToS2 = (code) => code.slice(0, 4) + String(Math.max(+code[4], +code[5])) + code.slice(6);
+  for (const sc of SCENARIOS) sc.s2 = s1ToS2(sc.s1);
+
+  root.MBU.VARIANTS = { q1: quick, s1: standard, d1: detailed, s2: standard2 };
+  root.MBU.VARIANT_ORDER = ['q1', 's2', 's1', 'd1'];
+  root.MBU.CATEGORIES = CATEGORIES_V2;
+  root.MBU.CATEGORIES_V1 = CATEGORIES_V1;
+  root.MBU.s1ToS2 = s1ToS2;
   root.MBU.ENGINES = ENGINES;
   root.MBU.builtWith = builtWith;
   root.MBU.SCENARIOS = SCENARIOS;
